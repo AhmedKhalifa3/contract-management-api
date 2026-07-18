@@ -58,10 +58,28 @@ flask db upgrade
 flask run
 ```
 
+## API
+
+All endpoints under `/api/contracts`, JSON in/out.
+
+| Method | Path                  | Description                              |
+|--------|-----------------------|-------------------------------------------|
+| POST   | `/api/contracts`      | Create a contract (defaults to `draft`)  |
+| GET    | `/api/contracts`      | List, filter by `?status=`/`?category=`, paginate via `?page=`/`?per_page=` |
+| GET    | `/api/contracts/<id>` | Retrieve one                             |
+| PATCH  | `/api/contracts/<id>` | Partial update                           |
+| DELETE | `/api/contracts/<id>` | Delete                                   |
+
+Validation errors return `400` with `{"error": "validation_error", ...}`.
+Missing resources return `404` with `{"error": "not_found", ...}`.
+
+Run tests: `pytest` (needs `TEST_DATABASE_URL` env var or the docker-compose
+default; test DB is created automatically alongside the dev DB).
+
 ## Project status
 
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
-- [ ] CRUD REST API + Pydantic schemas
+- [x] CRUD REST API + Pydantic schemas
 - [ ] Status transition business logic
 - [ ] Pandas reporting/export endpoint
 - [ ] Full Docker Compose (app + db)
