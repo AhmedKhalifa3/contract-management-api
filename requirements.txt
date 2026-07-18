@@ -7,6 +7,7 @@ pydantic==2.7.4
 python-dotenv==1.0.1
 pandas==2.2.2
 gunicorn==22.0.0
+sentry-sdk[flask]==2.66.0
 
 # dev/test
 pytest==8.2.2

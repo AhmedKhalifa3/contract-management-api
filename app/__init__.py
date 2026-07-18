@@ -1,7 +1,9 @@
 import os
 
+import sentry_sdk
 from flask import Flask, jsonify
 from pydantic import ValidationError as PydanticValidationError
+from sentry_sdk.integrations.flask import FlaskIntegration
 
 from app.config import config_by_name
 from app.extensions import db, migrate
@@ -13,6 +15,15 @@ def create_app(config_name: str | None = None) -> Flask:
 
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
+
+    if app.config["SENTRY_DSN"]:
+        sentry_sdk.init(
+            dsn=app.config["SENTRY_DSN"],
+            integrations=[FlaskIntegration()],
+            environment=config_name,
+            traces_sample_rate=app.config["SENTRY_TRACES_SAMPLE_RATE"],
+            send_default_pii=False,
+        )
 
     db.init_app(app)
     migrate.init_app(app, db)

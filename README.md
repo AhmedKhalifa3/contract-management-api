@@ -140,6 +140,23 @@ attachment).
 Run tests (from the host venv, against the dockerized Postgres):
 `TEST_DATABASE_URL=postgresql+psycopg2://contract_user:contract_pass@localhost:5433/contract_db_test pytest`
 
+## Error tracking
+
+[Sentry](https://sentry.io) free tier (5K events/month) is enough for this
+project — no paid tier needed.
+
+1. Sign up, create a Flask project, copy its DSN.
+2. Put it in `.env` as `SENTRY_DSN=...` (works for both `docker compose up`
+   and the host venv).
+3. Leave it blank to disable entirely — the default, and what CI/tests run
+   with.
+
+Only genuinely unhandled exceptions (real bugs) reach Sentry. The expected
+`400`/`404` error paths in this API are handled by dedicated error handlers
+that return a response directly, so they never trigger Flask's unhandled
+exception signal — Sentry stays quiet for expected client errors and only
+fires for actual server-side failures.
+
 ## Project status
 
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
@@ -147,7 +164,7 @@ Run tests (from the host venv, against the dockerized Postgres):
 - [x] Status transition business logic
 - [x] Pandas reporting/export endpoint
 - [x] Full Docker Compose (app + db)
-- [ ] Sentry error tracking
+- [x] Sentry error tracking
 - [ ] Structured logging → Elasticsearch/Kibana
 - [ ] Prometheus + Grafana metrics
 - [ ] AWS deployment + CI

@@ -25,6 +25,10 @@ services:
       # the container's own port (5432) — not the host-remapped 5433 from
       # .env, which only makes sense from outside Docker.
       DATABASE_URL: postgresql+psycopg2://contract_user:contract_pass@db:5432/contract_db
+      # Compose auto-loads the root .env for ${...} substitution below
+      # (separate from env_file:, which we don't use here) — leave the
+      # var unset there and this defaults to empty, i.e. Sentry disabled.
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "5000:5000"
     volumes:

@@ -4,6 +4,10 @@ import os
 class BaseConfig:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Empty string disables Sentry entirely — sentry_sdk.init() no-ops on a
+    # falsy DSN, so local dev/CI never needs a real Sentry account.
+    SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+    SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
 
 
 class DevelopmentConfig(BaseConfig):
