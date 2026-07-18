@@ -42,6 +42,20 @@ Flask/PostgreSQL backend engineering.
   Flask's default JSON encoder can't serialize at all, and raw `date` objects,
   which it silently renders as RFC-822 strings instead of the ISO format used
   everywhere else in this API. Both are normalized before `jsonify`.
+- **One Dockerfile, two run modes** — the image's default `CMD` runs gunicorn
+  (what a real deployment would use); docker-compose overrides it with
+  `flask run --debug` plus a bind mount, for hot-reload local dev. Same
+  image either way, no dev-only Dockerfile to keep in sync.
+- **The app container's `DATABASE_URL` points at `db:5432`**, not
+  `localhost:5433` — containers reach each other by service name over the
+  compose network at the container's own port; the host-remapped `5433` from
+  `.env` only means anything from outside Docker. Set explicitly in
+  `docker-compose.yml`, not inherited from `.env`.
+- **Migrations run automatically on container start** (`docker/entrypoint.sh`
+  runs `flask db upgrade` before exec'ing the main process) — convenient for
+  a single local instance. Note this doesn't scale to multiple replicas
+  without a migration race; a real deployment would run migrations as a
+  separate release step instead.
 
 ## Data model
 
@@ -55,27 +69,33 @@ Flask/PostgreSQL backend engineering.
 
 ## Local setup
 
-Requires Docker and Python 3.12+.
+Requires Docker.
 
 ```bash
-# 1. start Postgres (dev DB on host port 5433, test DB created automatically)
-docker compose up -d
+cp .env.example .env
+docker compose up --build
+```
 
-# 2. python env
+That's it — Postgres, the test DB, and the Flask app all come up together.
+App is on `http://localhost:5000`, dev DB is reachable from the host on
+`localhost:5433` (not 5432 — see below). Edits to `.py` files reload the
+running server automatically.
+
+<details>
+<summary>Running without Docker (host venv)</summary>
+
+```bash
+docker compose up -d db   # just Postgres
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-# 3. env vars
 cp .env.example .env
-
-# 4. run migrations
 export FLASK_APP=wsgi.py
 flask db upgrade
-
-# 5. run the app
 flask run
 ```
+
+</details>
 
 ## API
 
@@ -117,8 +137,8 @@ Missing resources return `404` with `{"error": "not_found", ...}`.
 Both accept `?format=json` (default) or `?format=csv` (downloads as an
 attachment).
 
-Run tests: `pytest` (needs `TEST_DATABASE_URL` env var or the docker-compose
-default; test DB is created automatically alongside the dev DB).
+Run tests (from the host venv, against the dockerized Postgres):
+`TEST_DATABASE_URL=postgresql+psycopg2://contract_user:contract_pass@localhost:5433/contract_db_test pytest`
 
 ## Project status
 
@@ -126,7 +146,7 @@ default; test DB is created automatically alongside the dev DB).
 - [x] CRUD REST API + Pydantic schemas
 - [x] Status transition business logic
 - [x] Pandas reporting/export endpoint
-- [ ] Full Docker Compose (app + db)
+- [x] Full Docker Compose (app + db)
 - [ ] Sentry error tracking
 - [ ] Structured logging → Elasticsearch/Kibana
 - [ ] Prometheus + Grafana metrics
