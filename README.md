@@ -33,6 +33,15 @@ Flask/PostgreSQL backend engineering.
   the threshold, meant to be hit by a scheduled job in production. Read-only
   detection is available separately via `GET /expiring-soon` without mutating
   anything, useful for reporting before/without running the sweep.
+- **Reports reuse `status_service.list_expiring_soon`** rather than
+  re-deriving "what counts as expiring soon" independently — one definition
+  of that business rule, not two that can drift apart. Pandas is used for
+  what it's actually good at (`groupby`/`agg`), not for filtering.
+- **JSON output from the reporting endpoints is explicitly sanitized** —
+  pandas aggregation produces `numpy.int64`/`numpy.float64` scalars, which
+  Flask's default JSON encoder can't serialize at all, and raw `date` objects,
+  which it silently renders as RFC-822 strings instead of the ISO format used
+  everywhere else in this API. Both are normalized before `jsonify`.
 
 ## Data model
 
@@ -98,6 +107,16 @@ renewed  -> active
 Validation errors return `400` with `{"error": "validation_error", ...}`.
 Missing resources return `404` with `{"error": "not_found", ...}`.
 
+### Reports
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/reports/value-by-category` | Contract count + total value grouped by category |
+| GET | `/api/reports/expiring-soon-summary?days=` | Same grouping, restricted to contracts expiring within the threshold |
+
+Both accept `?format=json` (default) or `?format=csv` (downloads as an
+attachment).
+
 Run tests: `pytest` (needs `TEST_DATABASE_URL` env var or the docker-compose
 default; test DB is created automatically alongside the dev DB).
 
@@ -106,7 +125,7 @@ default; test DB is created automatically alongside the dev DB).
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
 - [x] CRUD REST API + Pydantic schemas
 - [x] Status transition business logic
-- [ ] Pandas reporting/export endpoint
+- [x] Pandas reporting/export endpoint
 - [ ] Full Docker Compose (app + db)
 - [ ] Sentry error tracking
 - [ ] Structured logging → Elasticsearch/Kibana
