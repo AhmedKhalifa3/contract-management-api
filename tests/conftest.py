@@ -37,3 +37,22 @@ def contract_payload():
         "end_date": (today + timedelta(days=365)).isoformat(),
         "category": "supply",
     }
+
+
+@pytest.fixture()
+def make_contract(client, contract_payload):
+    """Create a contract, optionally driving it to a given status via the
+    real transition endpoint (not a DB shortcut) so tests exercise the
+    same state machine the API enforces."""
+
+    def _make(status: str | None = None, **overrides):
+        payload = {**contract_payload, **overrides}
+        created = client.post("/api/contracts", json=payload).get_json()
+        if status:
+            client.post(
+                f"/api/contracts/{created['id']}/transition", json={"status": status}
+            )
+            created = client.get(f"/api/contracts/{created['id']}").get_json()
+        return created
+
+    return _make

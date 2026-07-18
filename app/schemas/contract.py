@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.contract import ContractStatus
 
@@ -25,6 +25,15 @@ class ContractBase(BaseModel):
 class ContractCreate(ContractBase):
     status: ContractStatus = ContractStatus.DRAFT
 
+    @field_validator("status")
+    @classmethod
+    def must_be_initial_status(cls, v: ContractStatus) -> ContractStatus:
+        # expiring/expired/renewed only make sense as the result of a
+        # transition or renewal event, not as a starting point.
+        if v not in (ContractStatus.DRAFT, ContractStatus.ACTIVE):
+            raise ValueError("new contracts must start as 'draft' or 'active'")
+        return v
+
 
 class ContractUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
@@ -33,7 +42,6 @@ class ContractUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     category: str | None = Field(default=None, min_length=1, max_length=100)
-    status: ContractStatus | None = None
 
     @model_validator(mode="after")
     def check_date_order(self):
@@ -51,3 +59,19 @@ class ContractRead(ContractBase):
     status: ContractStatus
     created_at: datetime
     updated_at: datetime
+
+
+class ContractTransition(BaseModel):
+    status: ContractStatus
+
+
+class ContractRenewal(BaseModel):
+    new_end_date: date
+    notes: str | None = None
+
+    @field_validator("new_end_date")
+    @classmethod
+    def must_be_future(cls, v: date) -> date:
+        if v <= date.today():
+            raise ValueError("new_end_date must be in the future")
+        return v

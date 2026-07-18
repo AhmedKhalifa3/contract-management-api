@@ -23,6 +23,16 @@ Flask/PostgreSQL backend engineering.
   lifecycle states, not a business-configurable list.
 - **Local dev DB runs on host port 5433**, not 5432 — this machine already had
   a native Postgres instance bound to 5432.
+- **Status changes go through a dedicated `/transition` action endpoint**, not
+  the generic PATCH — PATCH edits plain attributes, transitions are validated
+  against an explicit state machine (`app/services/status_service.py`) so
+  illegal jumps like `draft -> expired` are rejected with `400`, not silently
+  written.
+- **`expiring` is a stored status, not computed on every read** — a sweep
+  endpoint (`POST /expiring-soon/sweep`) bulk-transitions contracts crossing
+  the threshold, meant to be hit by a scheduled job in production. Read-only
+  detection is available separately via `GET /expiring-soon` without mutating
+  anything, useful for reporting before/without running the sweep.
 
 ## Data model
 
@@ -69,6 +79,21 @@ All endpoints under `/api/contracts`, JSON in/out.
 | GET    | `/api/contracts/<id>` | Retrieve one                             |
 | PATCH  | `/api/contracts/<id>` | Partial update                           |
 | DELETE | `/api/contracts/<id>` | Delete                                   |
+| POST   | `/api/contracts/<id>/transition` | Move to a new status, validated against the state machine below |
+| POST   | `/api/contracts/<id>/renew`      | Extend `end_date`, logs a `RenewalHistory` row, sets status to `renewed` |
+| GET    | `/api/contracts/expiring-soon`   | Read-only: active contracts with `end_date` within `?days=` (default 30) |
+| POST   | `/api/contracts/expiring-soon/sweep` | Bulk-transition qualifying active contracts to `expiring` |
+| POST   | `/api/contracts/expired/sweep`   | Bulk-transition past-due active/expiring contracts to `expired` |
+
+Status state machine:
+
+```
+draft    -> active
+active   -> expiring, renewed
+expiring -> expired, renewed
+expired  -> renewed
+renewed  -> active
+```
 
 Validation errors return `400` with `{"error": "validation_error", ...}`.
 Missing resources return `404` with `{"error": "not_found", ...}`.
@@ -80,7 +105,7 @@ default; test DB is created automatically alongside the dev DB).
 
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
 - [x] CRUD REST API + Pydantic schemas
-- [ ] Status transition business logic
+- [x] Status transition business logic
 - [ ] Pandas reporting/export endpoint
 - [ ] Full Docker Compose (app + db)
 - [ ] Sentry error tracking
