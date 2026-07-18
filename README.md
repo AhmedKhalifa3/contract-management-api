@@ -1,0 +1,71 @@
+# Contract & Document Management API
+
+Backend service for managing business contracts — metadata, lifecycle status,
+renewal history, and reporting. Built as a portfolio piece demonstrating
+Flask/PostgreSQL backend engineering.
+
+## Architecture decisions
+
+- **App factory pattern** (`app/create_app()`) instead of a global `Flask(__name__)`
+  instance — lets tests spin up isolated app/DB instances per test run.
+- **UUID primary keys**, not autoincrement integers — avoids exposing
+  sequential/guessable IDs in a REST API.
+- **Pydantic schemas kept separate from SQLAlchemy models** — models describe
+  the DB shape, schemas describe the API contract. Keeps request validation
+  and response serialization independent of storage schema.
+- **Service layer** sits between routes and models — business logic (status
+  transitions, expiring-soon detection, report aggregation) lives in
+  `app/services/`, not scattered across route handlers.
+- **`category` is a plain indexed string**, validated at the Pydantic layer,
+  not a Postgres `ENUM` — changing the allowed category list is a code change
+  + deploy, not a DB migration (`ALTER TYPE ... ADD VALUE` is awkward inside
+  transactions). `status` *is* a Postgres enum since its values are fixed
+  lifecycle states, not a business-configurable list.
+- **Local dev DB runs on host port 5433**, not 5432 — this machine already had
+  a native Postgres instance bound to 5432.
+
+## Data model
+
+- **Contract** — `id, title, counterparty, value, start_date, end_date,
+  status, category, created_at, updated_at`. `status` is one of
+  `draft, active, expiring, expired, renewed`.
+- **RenewalHistory** — audit trail of renewals, one row per renewal event
+  (`contract_id, previous_end_date, new_end_date, renewed_at, notes`).
+- **Document** — attachment metadata only, not file bytes
+  (`contract_id, filename, storage_path, content_type, size_bytes, uploaded_at`).
+
+## Local setup
+
+Requires Docker and Python 3.12+.
+
+```bash
+# 1. start Postgres (dev DB on host port 5433, test DB created automatically)
+docker compose up -d
+
+# 2. python env
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. env vars
+cp .env.example .env
+
+# 4. run migrations
+export FLASK_APP=wsgi.py
+flask db upgrade
+
+# 5. run the app
+flask run
+```
+
+## Project status
+
+- [x] Data model + migrations (Contract, RenewalHistory, Document)
+- [ ] CRUD REST API + Pydantic schemas
+- [ ] Status transition business logic
+- [ ] Pandas reporting/export endpoint
+- [ ] Full Docker Compose (app + db)
+- [ ] Sentry error tracking
+- [ ] Structured logging → Elasticsearch/Kibana
+- [ ] Prometheus + Grafana metrics
+- [ ] AWS deployment + CI
