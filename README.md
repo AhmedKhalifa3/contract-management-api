@@ -80,6 +80,22 @@ Flask/PostgreSQL backend engineering.
 - **Grafana's datasource and dashboard are provisioned as files**, not
   clicked together manually — `docker/grafana/provisioning/`. Reproducible,
   and the dashboard is there immediately on first `docker compose up`.
+- **`docker-compose.prod.yml` is app + Postgres only** — the deployed EC2
+  instance is a free-tier `t3.micro` (1GB RAM), which the ELK + Prometheus +
+  Grafana stack doesn't fit on (Elasticsearch alone wants 2GB+). A real
+  production deployment of this size would use managed equivalents (CloudWatch
+  Logs instead of self-hosted ELK, Amazon Managed Prometheus/Grafana) or a
+  larger instance — this is a deliberate scope trim for the free tier, not
+  a gap.
+- **Prod compose has no bind mount and no `command:` override** — runs from
+  the built image only (no live-reload), and falls back to the Dockerfile's
+  default `gunicorn` CMD instead of dev's `flask run --debug`. Required
+  secrets (`SECRET_KEY`, `POSTGRES_PASSWORD`) use `${VAR:?message}` syntax so
+  compose refuses to start with a clear error instead of silently running
+  with an insecure default.
+- **Postgres isn't exposed to the host at all in prod** — no port mapping,
+  reachable only from the `app` container over the compose network. The dev
+  compose exposes `5433` for local psql access; production has no reason to.
 
 ## Data model
 
@@ -224,6 +240,38 @@ total requests. No manual setup, it's provisioned from
 Sanity check without Grafana:
 `curl 'localhost:9090/api/v1/query?query=sum(http_requests_total)'`.
 
+## Deployment (AWS)
+
+Deployed to a single free-tier EC2 instance (`t3.micro`, eu-central-1) —
+Elastic Beanstalk was the other option, but a plain EC2 instance running the
+same `docker-compose.prod.yml` we already use locally is simpler for a solo
+project and reuses the container work directly instead of translating it
+into a PaaS-specific format.
+
+**Provisioning** (one-time, done manually): default VPC, a security group
+opening `22` (SSH) and `5000` (app) to `0.0.0.0/0` — narrower in a real
+deployment, left open here since this is a single demo instance with no
+sensitive data — Amazon Linux 2023 AMI, Docker + Compose plugin installed
+via user-data on first boot.
+
+**Deploy flow**: `.github/workflows/ci-cd.yml` runs on every push —
+
+1. `test` job: spins up a Postgres service container, runs the full pytest
+   suite, does a Docker build sanity check.
+2. `deploy` job (main branch only, gated on `test` passing): SSHes into the
+   EC2 instance, `git pull`, `docker compose -f docker-compose.prod.yml
+   --env-file .env up -d --build`.
+
+The server's `.env` (real `SECRET_KEY`/`POSTGRES_PASSWORD`, generated with
+`openssl rand -hex` directly on the instance) lives only on the instance
+itself — never committed, never passed through CI.
+
+**Free-tier notes**: `t3.micro` is free-tier eligible (750 hrs/month for 12
+months); Elastic Beanstalk itself has no extra charge but its default
+environment adds a load balancer that isn't — using a bare EC2 instance
+avoids that. No RDS — Postgres runs in the same compose stack as the app,
+one fewer billable resource for a project this size.
+
 ## Project status
 
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
@@ -234,4 +282,4 @@ Sanity check without Grafana:
 - [x] Sentry error tracking
 - [x] Structured logging → Elasticsearch/Kibana
 - [x] Prometheus + Grafana metrics
-- [ ] AWS deployment + CI
+- [x] AWS deployment + CI
