@@ -3,6 +3,8 @@ import time
 from flask import Flask, g, request
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
+from app.extensions import limiter
+
 REQUEST_COUNT = Counter(
     "http_requests_total",
     "Total HTTP requests",
@@ -32,7 +34,7 @@ def register_metrics(app: Flask) -> None:
 
     @app.after_request
     def _record_metrics(response):
-        if request.path == "/metrics":
+        if request.path in ("/metrics", "/healthz"):
             return response
 
         duration = time.monotonic() - g._metrics_start_time
@@ -48,5 +50,6 @@ def register_metrics(app: Flask) -> None:
         return response
 
     @app.route("/metrics")
+    @limiter.exempt
     def metrics():
         return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}

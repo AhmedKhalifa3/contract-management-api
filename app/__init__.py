@@ -6,7 +6,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sentry_sdk.integrations.flask import FlaskIntegration
 
 from app.config import config_by_name
-from app.extensions import db, migrate
+from app.extensions import db, limiter, migrate
 from app.utils.exceptions import AppValidationError, NotFoundError
 from app.utils.logging import configure_logging
 from app.utils.metrics import register_metrics
@@ -22,6 +22,12 @@ def create_app(config_name: str | None = None) -> Flask:
     configure_logging(app)
     register_request_logging(app)
     register_metrics(app)
+
+    # Deterministic test runs regardless of the chosen limit thresholds —
+    # tests fire many requests in quick succession by design.
+    app.config.setdefault("RATELIMIT_ENABLED", not app.config.get("TESTING"))
+    app.config.setdefault("RATELIMIT_DEFAULT", "200 per minute")
+    limiter.init_app(app)
 
     if app.config["SENTRY_DSN"]:
         sentry_sdk.init(

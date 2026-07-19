@@ -256,8 +256,8 @@ via user-data on first boot.
 
 **Deploy flow**: `.github/workflows/ci-cd.yml` runs on every push —
 
-1. `test` job: spins up a Postgres service container, runs the full pytest
-   suite, does a Docker build sanity check.
+1. `test` job: `ruff check`, spins up a Postgres service container, runs
+   migrations + the full pytest suite, does a Docker build sanity check.
 2. `deploy` job (main branch only, gated on `test` passing): SSHes into the
    EC2 instance, `git pull`, `docker compose -f docker-compose.prod.yml
    --env-file .env up -d --build`.
@@ -271,6 +271,46 @@ months); Elastic Beanstalk itself has no extra charge but its default
 environment adds a load balancer that isn't — using a bare EC2 instance
 avoids that. No RDS — Postgres runs in the same compose stack as the app,
 one fewer billable resource for a project this size.
+
+## Production readiness
+
+What's hardened:
+
+- **Gunicorn tuned for real concurrency** — bare `gunicorn` defaults to a
+  single worker, which would serialize every request. `Dockerfile` sets
+  `--workers 2 --threads 2 --timeout 30`, kept modest (not the usual
+  `2 * CPU + 1`) since Postgres shares the same 1GB free-tier box.
+- **`GET /healthz`** checks real DB connectivity (`SELECT 1`), not just "the
+  process is alive" — wired into a Docker `HEALTHCHECK` on the image itself,
+  so both the dev and prod compose files pick it up automatically without
+  duplicating the check in each YAML file.
+- **Rate limiting** (Flask-Limiter, 200 requests/min per IP by default) —
+  this is a publicly reachable demo box. `/healthz` and `/metrics` are
+  exempt so health checks and scraping never trip it. In-memory storage,
+  which is fine for one instance but wouldn't hold up scaled to multiple
+  replicas without a shared backing store (Redis) — each replica would
+  track limits independently.
+- **`ruff check` as a CI gate** — runs before tests, fails fast on cheap
+  checks first.
+
+Known gaps, left as explicit trade-offs rather than silently ignored:
+
+- **No TLS/HTTPS** — the app is reachable over plain HTTP on a bare IP.
+  Let's Encrypt (the free option) requires a domain name to issue a
+  certificate against; there isn't one pointed at this instance. Adding a
+  domain + Caddy/Nginx reverse proxy would be the next step.
+- **SSH open to `0.0.0.0/0`** — acceptable for a single demo instance with
+  no sensitive data, not for anything real. Would restrict to a known IP
+  range or move to AWS Systems Manager Session Manager (no open port at
+  all) in a real deployment.
+- **Secrets live in a plaintext `.env` on the instance**, generated once via
+  `openssl rand -hex` — not committed or passed through CI, but also not in
+  a secrets manager. AWS Secrets Manager or SSM Parameter Store would be
+  the real answer, at a small additional cost/complexity not justified for
+  this project's scope.
+- **No automated Postgres backups** — data lives on the instance's EBS
+  volume only. A real deployment would want scheduled snapshots at minimum,
+  ideally RDS with automated backups instead of self-managed Postgres.
 
 ## Project status
 

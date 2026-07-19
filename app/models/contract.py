@@ -1,12 +1,19 @@
+from __future__ import annotations
+
 import enum
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Date, Enum, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.extensions import db
 from app.models.mixins import TimestampMixin, UUIDPKMixin
+
+if TYPE_CHECKING:
+    from app.models.document import Document
+    from app.models.renewal import RenewalHistory
 
 
 class ContractStatus(str, enum.Enum):
