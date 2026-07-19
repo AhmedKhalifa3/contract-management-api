@@ -56,6 +56,21 @@ Flask/PostgreSQL backend engineering.
   a single local instance. Note this doesn't scale to multiple replicas
   without a migration race; a real deployment would run migrations as a
   separate release step instead.
+- **Logs are shipped via a shared file, not Docker log/container autodiscovery**
+  — the app writes structured JSON to `/var/log/app/app.log` on a named
+  volume; Filebeat tails that file directly. The more common
+  container-autodiscovery pattern reads from `/var/lib/docker/containers` on
+  the host, which is unreliable across different Docker setups (breaks on
+  Docker Desktop's VM-backed installs). File-tailing works identically
+  everywhere and doesn't need the Docker socket mounted into Filebeat.
+- **The `app_logs` volume needs `appuser` ownership set inside the image**
+  (`Dockerfile`, before `USER appuser`) — a fresh named volume mounted over
+  an empty path is created root-owned by default; Docker only inherits
+  ownership from the image if that path already exists there first. Skipping
+  this causes a `PermissionError` on container start.
+- **Elasticsearch and Kibana run with security disabled** (`xpack.security.enabled=false`)
+  — fine for a local single-node dev stack behind no exposed ports beyond
+  localhost; a real deployment would need TLS + auth enabled.
 
 ## Data model
 
@@ -157,6 +172,30 @@ that return a response directly, so they never trigger Flask's unhandled
 exception signal — Sentry stays quiet for expected client errors and only
 fires for actual server-side failures.
 
+## Logging (ELK)
+
+`docker compose up` also brings up Elasticsearch, Kibana, and Filebeat —
+no separate step needed, no cloud tier involved (self-hosted, local only).
+
+Every request logs one JSON line (`app/utils/request_logging.py`):
+`method, path, status_code, duration_ms, remote_addr`, plus the usual
+`timestamp, level, logger, message`. Written to stdout (`docker compose logs
+app`) and to `/var/log/app/app.log` on a shared volume, which Filebeat tails
+and ships to Elasticsearch as `contract-api-logs-*`.
+
+To view logs:
+
+1. Open Kibana at `http://localhost:5601`.
+2. **Stack Management → Data Views → Create data view**, pattern
+   `contract-api-logs-*`, timestamp field `@timestamp`.
+3. **Discover** to browse/query — e.g. `status_code >= 400` to find errors,
+   or `duration_ms > 100` for slow requests.
+
+Sanity check without Kibana: `curl localhost:9200/contract-api-logs-*/_search?pretty`.
+
+Elasticsearch typically wants 2GB+ RAM to start reliably — if it's not
+becoming healthy, check `docker compose logs elasticsearch` first.
+
 ## Project status
 
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
@@ -165,6 +204,6 @@ fires for actual server-side failures.
 - [x] Pandas reporting/export endpoint
 - [x] Full Docker Compose (app + db)
 - [x] Sentry error tracking
-- [ ] Structured logging → Elasticsearch/Kibana
+- [x] Structured logging → Elasticsearch/Kibana
 - [ ] Prometheus + Grafana metrics
 - [ ] AWS deployment + CI

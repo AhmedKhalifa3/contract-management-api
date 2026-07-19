@@ -13,7 +13,9 @@ COPY . .
 
 RUN useradd --create-home appuser \
     && chown -R appuser:appuser /app \
-    && chmod +x docker/entrypoint.sh
+    && chmod +x docker/entrypoint.sh \
+    && mkdir -p /var/log/app \
+    && chown appuser:appuser /var/log/app
 
 USER appuser
 

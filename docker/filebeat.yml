@@ -1,0 +1,17 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/app/app.log
+    json.keys_under_root: true
+    json.add_error_key: true
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "contract-api-logs-%{+yyyy.MM.dd}"
+
+setup.template.name: "contract-api-logs"
+setup.template.pattern: "contract-api-logs-*"
+setup.ilm.enabled: false
+
+logging.level: info
