@@ -71,6 +71,15 @@ Flask/PostgreSQL backend engineering.
 - **Elasticsearch and Kibana run with security disabled** (`xpack.security.enabled=false`)
   — fine for a local single-node dev stack behind no exposed ports beyond
   localhost; a real deployment would need TLS + auth enabled.
+- **Metrics are labeled by Flask's route pattern, not the resolved request
+  path** (`request.url_rule.rule`, e.g. `/api/contracts/<uuid:contract_id>`)
+  — labeling by `request.path` would create a new Prometheus time series per
+  contract UUID ever requested, unbounded cardinality that quietly grows
+  Prometheus's memory/storage forever. Verified with a test asserting a real
+  UUID never appears in `/metrics` output.
+- **Grafana's datasource and dashboard are provisioned as files**, not
+  clicked together manually — `docker/grafana/provisioning/`. Reproducible,
+  and the dashboard is there immediately on first `docker compose up`.
 
 ## Data model
 
@@ -196,6 +205,25 @@ Sanity check without Kibana: `curl localhost:9200/contract-api-logs-*/_search?pr
 Elasticsearch typically wants 2GB+ RAM to start reliably — if it's not
 becoming healthy, check `docker compose logs elasticsearch` first.
 
+## Metrics (Prometheus + Grafana)
+
+Also part of `docker compose up` — no extra step, no cloud tier
+(self-hosted, local only, and much lighter than the ELK stack).
+
+The app exposes `GET /metrics` in Prometheus text format:
+`http_requests_total{method,endpoint,status_code}` (counter) and
+`http_request_duration_seconds{method,endpoint}` (histogram). Prometheus
+scrapes it every 5s (`docker/prometheus.yml`).
+
+Open Grafana at `http://localhost:3000` (anonymous viewer access enabled,
+or `admin`/`admin`) — the **Contract API Overview** dashboard is already
+there: request rate by endpoint, p95 latency by endpoint, 5xx error rate,
+total requests. No manual setup, it's provisioned from
+`docker/grafana/provisioning/`.
+
+Sanity check without Grafana:
+`curl 'localhost:9090/api/v1/query?query=sum(http_requests_total)'`.
+
 ## Project status
 
 - [x] Data model + migrations (Contract, RenewalHistory, Document)
@@ -205,5 +233,5 @@ becoming healthy, check `docker compose logs elasticsearch` first.
 - [x] Full Docker Compose (app + db)
 - [x] Sentry error tracking
 - [x] Structured logging → Elasticsearch/Kibana
-- [ ] Prometheus + Grafana metrics
+- [x] Prometheus + Grafana metrics
 - [ ] AWS deployment + CI

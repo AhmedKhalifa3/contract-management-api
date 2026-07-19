@@ -9,6 +9,7 @@ from app.config import config_by_name
 from app.extensions import db, migrate
 from app.utils.exceptions import AppValidationError, NotFoundError
 from app.utils.logging import configure_logging
+from app.utils.metrics import register_metrics
 from app.utils.request_logging import register_request_logging
 
 
@@ -20,6 +21,7 @@ def create_app(config_name: str | None = None) -> Flask:
 
     configure_logging(app)
     register_request_logging(app)
+    register_metrics(app)
 
     if app.config["SENTRY_DSN"]:
         sentry_sdk.init(

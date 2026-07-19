@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "contract-api"
+    static_configs:
+      - targets: ["app:5000"]
+    metrics_path: /metrics
